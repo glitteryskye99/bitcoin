@@ -1,7 +1,8 @@
 repo_name: glitteryskye99/bitcoin
 report_id: 7a92e2beb6f6849606ef1a586ea81b28
+version: 0.1
 repo_type: Public
-timestamp: '2023-11-10T05:24:59+00:00'
+timestamp: '2024-01-05T08:59:19+00:00'
 requested_by: glitteryskye99
 provider: github
 branch: master
@@ -15,6 +16,7 @@ tools:
   category: Languages & Frameworks
   sub_category: Languages
   image_url: https://img.stackshare.io/service/4934/default_71f18bbdc61fb88cefb66415bb55dc6f1e60e5ec.png
+  detection_source_url: https://github.com/glitteryskye99/bitcoin
   detection_source: Repo Metadata
 - name: C lang
   description: One of the most widely used programming languages of all time
@@ -24,6 +26,7 @@ tools:
   category: Languages & Frameworks
   sub_category: Languages
   image_url: https://img.stackshare.io/no-img-open-source.png
+  detection_source_url: https://github.com/glitteryskye99/bitcoin
   detection_source: Repo Metadata
 - name: C++
   description: Has imperative, object-oriented and generic programming features, while
@@ -34,6 +37,7 @@ tools:
   category: Languages & Frameworks
   sub_category: Languages
   image_url: https://img.stackshare.io/service/1049/cplusplus.png
+  detection_source_url: https://github.com/glitteryskye99/bitcoin
   detection_source: Repo Metadata
 - name: Java
   description: A concurrent, class-based, object-oriented, language specifically designed
@@ -44,6 +48,7 @@ tools:
   category: Languages & Frameworks
   sub_category: Languages
   image_url: https://img.stackshare.io/service/995/K85ZWV2F.png
+  detection_source_url: https://github.com/glitteryskye99/bitcoin
   detection_source: Repo Metadata
 - name: Python
   description: A clear and powerful object-oriented programming language, comparable
@@ -54,6 +59,7 @@ tools:
   category: Languages & Frameworks
   sub_category: Languages
   image_url: https://img.stackshare.io/service/993/pUBY5pVj.png
+  detection_source_url: https://github.com/glitteryskye99/bitcoin
   detection_source: Repo Metadata
 - name: CMake
   description: 'An open-source system that manages the build process '
@@ -63,6 +69,7 @@ tools:
   category: Build, Test, Deploy
   sub_category: Java Build Tools
   image_url: https://img.stackshare.io/service/2424/0UlUI_y1_400x400.jpg
+  detection_source_url: https://github.com/glitteryskye99/bitcoin
   detection_source: Repo Metadata
 - name: Docker
   description: Enterprise Container Platform for High-Velocity Innovation.
@@ -73,6 +80,7 @@ tools:
   category: Build, Test, Deploy
   sub_category: Virtual Machine Platforms & Containers
   image_url: https://img.stackshare.io/service/586/n4u37v9t_400x400.png
+  detection_source_url: https://github.com/glitteryskye99/bitcoin
   detection_source: Repo Metadata
 - name: Git
   description: Fast, scalable, distributed revision control system
@@ -82,6 +90,7 @@ tools:
   category: Build, Test, Deploy
   sub_category: Version Control System
   image_url: https://img.stackshare.io/service/1046/git.png
+  detection_source_url: https://github.com/glitteryskye99/bitcoin
   detection_source: Repo Metadata
 - name: Gradle
   description: A powerful build system for the JVM
@@ -92,6 +101,7 @@ tools:
   category: Build, Test, Deploy
   sub_category: Java Build Tools
   image_url: https://img.stackshare.io/service/975/gradlephant-social-black-bg.png
+  detection_source_url: https://github.com/glitteryskye99/bitcoin/blob/master/src/qt/android/build.gradle
   detection_source: src/qt/android/build.gradle
   last_updated_by: Igor Cota
   last_updated_on: 2020-08-28 09:09:58.000000000 Z
@@ -104,7 +114,8 @@ tools:
   category: Build, Test, Deploy
   sub_category: Continuous Integration
   image_url: https://img.stackshare.io/service/460/Lu6cGu0z_400x400.png
-  detection_source: src/leveldb/.travis.yml
+  detection_source_url: https://github.com/glitteryskye99/bitcoin/blob/master/src/crc32c/.travis.yml
+  detection_source: src/crc32c/.travis.yml
   last_updated_by: Wladimir J. van der Laan
   last_updated_on: 2020-01-28 15:59:58.000000000 Z
 - name: Visual Studio
@@ -116,6 +127,7 @@ tools:
   category: Build, Test, Deploy
   sub_category: Integrated Development Environment
   image_url: https://img.stackshare.io/service/1451/SR2hUhQN.png
+  detection_source_url: https://github.com/glitteryskye99/bitcoin/blob/master/build_msvc/bitcoin.sln
   detection_source: build_msvc/bitcoin.sln
   last_updated_by: Aaron Clauson
   last_updated_on: 2019-06-19 07:20:20.000000000 Z
@@ -128,4 +140,5 @@ tools:
   category: Languages & Frameworks
   sub_category: Languages
   image_url: https://img.stackshare.io/service/4631/default_c2062d40130562bdc836c13dbca02d318205a962.png
+  detection_source_url: https://github.com/glitteryskye99/bitcoin
   detection_source: Repo Metadata
