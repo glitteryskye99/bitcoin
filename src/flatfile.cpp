@@ -8,7 +8,7 @@
 #include <flatfile.h>
 #include <logging.h>
 #include <tinyformat.h>
-#include <util/system.h>
+#include <util/fs_helpers.h>
 
 FlatFileSeq::FlatFileSeq(fs::path dir, const char* prefix, size_t chunk_size) :
     m_dir(std::move(dir)),
@@ -82,15 +82,18 @@ bool FlatFileSeq::Flush(const FlatFilePos& pos, bool finalize)
 {
     FILE* file = Open(FlatFilePos(pos.nFile, 0)); // Avoid fseek to nPos
     if (!file) {
-        return error("%s: failed to open file %d", __func__, pos.nFile);
+        LogError("%s: failed to open file %d\n", __func__, pos.nFile);
+        return false;
     }
     if (finalize && !TruncateFile(file, pos.nPos)) {
         fclose(file);
-        return error("%s: failed to truncate file %d", __func__, pos.nFile);
+        LogError("%s: failed to truncate file %d\n", __func__, pos.nFile);
+        return false;
     }
     if (!FileCommit(file)) {
         fclose(file);
-        return error("%s: failed to commit file %d", __func__, pos.nFile);
+        LogError("%s: failed to commit file %d\n", __func__, pos.nFile);
+        return false;
     }
     DirectoryCommit(m_dir);
 

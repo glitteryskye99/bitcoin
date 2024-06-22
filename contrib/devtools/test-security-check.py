@@ -5,10 +5,9 @@
 '''
 Test script for security-check.py
 '''
-import lief #type:ignore
+import lief
 import os
 import subprocess
-from typing import List
 import unittest
 
 from utils import determine_wellknown_cmd
@@ -28,22 +27,24 @@ def clean_files(source, executable):
     os.remove(source)
     os.remove(executable)
 
-def call_security_check(cc, source, executable, options):
+def env_flags() -> list[str]:
     # This should behave the same as AC_TRY_LINK, so arrange well-known flags
     # in the same order as autoconf would.
     #
     # See the definitions for ac_link in autoconf's lib/autoconf/c.m4 file for
     # reference.
-    env_flags: List[str] = []
+    flags: list[str] = []
     for var in ['CFLAGS', 'CPPFLAGS', 'LDFLAGS']:
-        env_flags += filter(None, os.environ.get(var, '').split(' '))
+        flags += filter(None, os.environ.get(var, '').split(' '))
+    return flags
 
-    subprocess.run([*cc,source,'-o',executable] + env_flags + options, check=True)
+def call_security_check(cc: str, source: str, executable: str, options) -> tuple:
+    subprocess.run([*cc,source,'-o',executable] + env_flags() + options, check=True)
     p = subprocess.run([os.path.join(os.path.dirname(__file__), 'security-check.py'), executable], stdout=subprocess.PIPE, text=True)
     return (p.returncode, p.stdout.rstrip())
 
 def get_arch(cc, source, executable):
-    subprocess.run([*cc, source, '-o', executable], check=True)
+    subprocess.run([*cc, source, '-o', executable] + env_flags(), check=True)
     binary = lief.parse(executable)
     arch = binary.abstract.header.architecture
     os.remove(executable)
@@ -119,29 +120,25 @@ class TestSecurityChecks(unittest.TestCase):
         arch = get_arch(cc, source, executable)
 
         if arch == lief.ARCHITECTURES.X86:
-            self.assertEqual(call_security_check(cc, source, executable, ['-Wl,-no_pie','-Wl,-flat_namespace','-Wl,-allow_stack_execute','-fno-stack-protector']),
-                (1, executable+': failed NOUNDEFS LAZY_BINDINGS Canary PIE NX CONTROL_FLOW'))
-            self.assertEqual(call_security_check(cc, source, executable, ['-Wl,-no_pie','-Wl,-flat_namespace','-Wl,-allow_stack_execute','-fstack-protector-all']),
-                (1, executable+': failed NOUNDEFS LAZY_BINDINGS PIE NX CONTROL_FLOW'))
-            self.assertEqual(call_security_check(cc, source, executable, ['-Wl,-no_pie','-Wl,-flat_namespace','-fstack-protector-all']),
-                (1, executable+': failed NOUNDEFS LAZY_BINDINGS PIE CONTROL_FLOW'))
-            self.assertEqual(call_security_check(cc, source, executable, ['-Wl,-no_pie','-fstack-protector-all']),
-                (1, executable+': failed LAZY_BINDINGS PIE CONTROL_FLOW'))
-            self.assertEqual(call_security_check(cc, source, executable, ['-Wl,-no_pie','-Wl,-bind_at_load','-fstack-protector-all']),
-                (1, executable+': failed PIE CONTROL_FLOW'))
-            self.assertEqual(call_security_check(cc, source, executable, ['-Wl,-no_pie','-Wl,-bind_at_load','-fstack-protector-all', '-fcf-protection=full']),
-                (1, executable+': failed PIE'))
-            self.assertEqual(call_security_check(cc, source, executable, ['-Wl,-pie','-Wl,-bind_at_load','-fstack-protector-all', '-fcf-protection=full']),
+            self.assertEqual(call_security_check(cc, source, executable, ['-Wl,-no_pie','-Wl,-flat_namespace','-fno-stack-protector', '-Wl,-no_fixup_chains']),
+                (1, executable+': failed NOUNDEFS Canary FIXUP_CHAINS PIE CONTROL_FLOW'))
+            self.assertEqual(call_security_check(cc, source, executable, ['-Wl,-flat_namespace','-fno-stack-protector', '-Wl,-fixup_chains']),
+                (1, executable+': failed NOUNDEFS Canary CONTROL_FLOW'))
+            self.assertEqual(call_security_check(cc, source, executable, ['-Wl,-flat_namespace','-fstack-protector-all', '-Wl,-fixup_chains']),
+                (1, executable+': failed NOUNDEFS CONTROL_FLOW'))
+            self.assertEqual(call_security_check(cc, source, executable, ['-fstack-protector-all', '-Wl,-fixup_chains']),
+                (1, executable+': failed CONTROL_FLOW'))
+            self.assertEqual(call_security_check(cc, source, executable, ['-fstack-protector-all', '-fcf-protection=full', '-Wl,-fixup_chains']),
                 (0, ''))
         else:
             # arm64 darwin doesn't support non-PIE binaries, control flow or executable stacks
-            self.assertEqual(call_security_check(cc, source, executable, ['-Wl,-flat_namespace','-fno-stack-protector']),
-                (1, executable+': failed NOUNDEFS LAZY_BINDINGS Canary'))
-            self.assertEqual(call_security_check(cc, source, executable, ['-Wl,-flat_namespace','-fstack-protector-all']),
-                (1, executable+': failed NOUNDEFS LAZY_BINDINGS'))
-            self.assertEqual(call_security_check(cc, source, executable, ['-fstack-protector-all']),
-                (1, executable+': failed LAZY_BINDINGS'))
-            self.assertEqual(call_security_check(cc, source, executable, ['-Wl,-bind_at_load','-fstack-protector-all']),
+            self.assertEqual(call_security_check(cc, source, executable, ['-Wl,-flat_namespace','-fno-stack-protector', '-Wl,-no_fixup_chains']),
+                (1, executable+': failed NOUNDEFS Canary FIXUP_CHAINS BRANCH_PROTECTION'))
+            self.assertEqual(call_security_check(cc, source, executable, ['-Wl,-flat_namespace','-fno-stack-protector', '-Wl,-fixup_chains', '-mbranch-protection=bti']),
+                (1, executable+': failed NOUNDEFS Canary'))
+            self.assertEqual(call_security_check(cc, source, executable, ['-Wl,-flat_namespace','-fstack-protector-all', '-Wl,-fixup_chains', '-mbranch-protection=bti']),
+                (1, executable+': failed NOUNDEFS'))
+            self.assertEqual(call_security_check(cc, source, executable, ['-fstack-protector-all', '-Wl,-fixup_chains', '-mbranch-protection=bti']),
                 (0, ''))
 
 

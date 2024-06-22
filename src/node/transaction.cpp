@@ -9,6 +9,7 @@
 #include <net_processing.h>
 #include <node/blockstorage.h>
 #include <node/context.h>
+#include <node/types.h>
 #include <txmempool.h>
 #include <validation.h>
 #include <validationinterface.h>
@@ -32,7 +33,7 @@ static TransactionError HandleATMPError(const TxValidationState& state, std::str
 
 TransactionError BroadcastTransaction(NodeContext& node, const CTransactionRef tx, std::string& err_string, const CAmount& max_tx_fee, bool relay, bool wait_callback)
 {
-    // BroadcastTransaction can be called by either sendrawtransaction RPC or the wallet.
+    // BroadcastTransaction can be called by RPC or by the wallet.
     // chainman, mempool and peerman are initialized before the RPC server and wallet are started
     // and reset after the RPC sever and wallet are stopped.
     assert(node.chainman);
@@ -40,7 +41,7 @@ TransactionError BroadcastTransaction(NodeContext& node, const CTransactionRef t
     assert(node.peerman);
 
     std::promise<void> promise;
-    uint256 txid = tx->GetHash();
+    Txid txid = tx->GetHash();
     uint256 wtxid = tx->GetWitnessHash();
     bool callback_set = false;
 
@@ -92,7 +93,7 @@ TransactionError BroadcastTransaction(NodeContext& node, const CTransactionRef t
                 node.mempool->AddUnbroadcastTx(txid);
             }
 
-            if (wait_callback) {
+            if (wait_callback && node.validation_signals) {
                 // For transactions broadcast from outside the wallet, make sure
                 // that the wallet has been notified of the transaction before
                 // continuing.
@@ -101,7 +102,7 @@ TransactionError BroadcastTransaction(NodeContext& node, const CTransactionRef t
                 // with a transaction to/from their wallet, immediately call some
                 // wallet RPC, and get a stale result because callbacks have not
                 // yet been processed.
-                CallFunctionInValidationInterfaceQueue([&promise] {
+                node.validation_signals->CallFunctionInValidationInterfaceQueue([&promise] {
                     promise.set_value();
                 });
                 callback_set = true;
@@ -122,7 +123,7 @@ TransactionError BroadcastTransaction(NodeContext& node, const CTransactionRef t
     return TransactionError::OK;
 }
 
-CTransactionRef GetTransaction(const CBlockIndex* const block_index, const CTxMemPool* const mempool, const uint256& hash, const Consensus::Params& consensusParams, uint256& hashBlock)
+CTransactionRef GetTransaction(const CBlockIndex* const block_index, const CTxMemPool* const mempool, const uint256& hash, uint256& hashBlock, const BlockManager& blockman)
 {
     if (mempool && !block_index) {
         CTransactionRef ptx = mempool->get(hash);
@@ -143,7 +144,7 @@ CTransactionRef GetTransaction(const CBlockIndex* const block_index, const CTxMe
     }
     if (block_index) {
         CBlock block;
-        if (ReadBlockFromDisk(block, block_index, consensusParams)) {
+        if (blockman.ReadBlockFromDisk(block, *block_index)) {
             for (const auto& tx : block.vtx) {
                 if (tx->GetHash() == hash) {
                     hashBlock = block_index->GetBlockHash();

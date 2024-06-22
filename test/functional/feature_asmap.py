@@ -27,6 +27,7 @@ import os
 import shutil
 
 from test_framework.test_framework import BitcoinTestFramework
+from test_framework.util import assert_equal
 
 DEFAULT_ASMAP_FILENAME = 'ip_asn.map' # defined in src/init.cpp
 ASMAP = '../../src/test/data/asmap.raw' # path to unit test skeleton asmap
@@ -39,11 +40,12 @@ def expected_messages(filename):
 class AsmapTest(BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
-        self.extra_args = [["-checkaddrman=1"]]  # Do addrman checks on all operations.
+        # Do addrman checks on all operations and use deterministic addrman
+        self.extra_args = [["-checkaddrman=1", "-test=addrman"]]
 
     def fill_addrman(self, node_id):
-        """Add 1 tried address to the addrman, followed by 1 new address."""
-        for addr, tried in [[0, True], [1, False]]:
+        """Add 2 tried addresses to the addrman, followed by 2 new addresses."""
+        for addr, tried in [[0, True], [1, True], [2, False], [3, False]]:
             self.nodes[node_id].addpeeraddress(address=f"101.{addr}.0.0", tried=tried, port=8333)
 
     def test_without_asmap_arg(self):
@@ -84,12 +86,12 @@ class AsmapTest(BitcoinTestFramework):
         self.log.info("Test bitcoind -asmap restart with addrman containing new and tried entries")
         self.stop_node(0)
         shutil.copyfile(self.asmap_raw, self.default_asmap)
-        self.start_node(0, ["-asmap", "-checkaddrman=1"])
+        self.start_node(0, ["-asmap", "-checkaddrman=1", "-test=addrman"])
         self.fill_addrman(node_id=0)
-        self.restart_node(0, ["-asmap", "-checkaddrman=1"])
+        self.restart_node(0, ["-asmap", "-checkaddrman=1", "-test=addrman"])
         with self.node.assert_debug_log(
             expected_msgs=[
-                "CheckAddrman: new 1, tried 1, total 2 started",
+                "CheckAddrman: new 2, tried 2, total 4 started",
                 "CheckAddrman: completed",
             ]
         ):
@@ -111,9 +113,25 @@ class AsmapTest(BitcoinTestFramework):
         self.node.assert_start_raises_init_error(extra_args=['-asmap'], expected_msg=msg)
         os.remove(self.default_asmap)
 
+    def test_asmap_health_check(self):
+        self.log.info('Test bitcoind -asmap logs ASMap Health Check with basic stats')
+        shutil.copyfile(self.asmap_raw, self.default_asmap)
+        msg = "ASMap Health Check: 4 clearnet peers are mapped to 3 ASNs with 0 peers being unmapped"
+        with self.node.assert_debug_log(expected_msgs=[msg]):
+            self.start_node(0, extra_args=['-asmap'])
+        raw_addrman = self.node.getrawaddrman()
+        asns = []
+        for _, entries in raw_addrman.items():
+            for _, entry in entries.items():
+                asn = entry['mapped_as']
+                if asn not in asns:
+                    asns.append(asn)
+        assert_equal(len(asns), 3)
+        os.remove(self.default_asmap)
+
     def run_test(self):
         self.node = self.nodes[0]
-        self.datadir = os.path.join(self.node.datadir, self.chain)
+        self.datadir = self.node.chain_path
         self.default_asmap = os.path.join(self.datadir, DEFAULT_ASMAP_FILENAME)
         self.asmap_raw = os.path.join(os.path.dirname(os.path.realpath(__file__)), ASMAP)
 
@@ -124,6 +142,7 @@ class AsmapTest(BitcoinTestFramework):
         self.test_asmap_interaction_with_addrman_containing_entries()
         self.test_default_asmap_with_missing_file()
         self.test_empty_asmap()
+        self.test_asmap_health_check()
 
 
 if __name__ == '__main__':

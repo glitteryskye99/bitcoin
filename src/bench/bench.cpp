@@ -4,8 +4,8 @@
 
 #include <bench/bench.h>
 
-#include <fs.h>
 #include <test/util/setup_common.h>
+#include <util/fs.h>
 #include <util/string.h>
 
 #include <chrono>
@@ -18,10 +18,13 @@
 #include <vector>
 
 using namespace std::chrono_literals;
+using util::Join;
 
 const std::function<void(const std::string&)> G_TEST_LOG_FUN{};
 
 const std::function<std::vector<const char*>()> G_TEST_COMMAND_LINE_ARGUMENTS{};
+
+const std::function<std::string()> G_TEST_GET_FULL_NAME{};
 
 namespace {
 

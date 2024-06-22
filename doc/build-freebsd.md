@@ -1,6 +1,6 @@
 # FreeBSD Build Guide
 
-**Updated for FreeBSD [12.3](https://www.freebsd.org/releases/12.3R/announce/)**
+**Updated for FreeBSD [14.0](https://www.freebsd.org/releases/14.0R/announce/)**
 
 This guide describes how to build bitcoind, command-line utilities, and GUI on FreeBSD.
 
@@ -36,21 +36,39 @@ pkg install sqlite3
 ```
 
 ###### Legacy Wallet Support
-`db5` is only required to support legacy wallets.
-Skip if you don't intend to use legacy wallets.
+BerkeleyDB is only required if legacy wallet support is required.
 
-```bash
-pkg install db5
+It is required to use Berkeley DB 4.8. You **cannot** use the BerkeleyDB library
+from ports. However, you can build DB 4.8 yourself [using depends](/depends).
+
 ```
----
+gmake -C depends NO_BOOST=1 NO_LIBEVENT=1 NO_QT=1 NO_SQLITE=1 NO_NATPMP=1 NO_UPNP=1 NO_ZMQ=1 NO_USDT=1
+```
+
+When the build is complete, the Berkeley DB installation location will be displayed:
+
+```
+to: /path/to/bitcoin/depends/x86_64-unknown-freebsd[release-number]
+```
+
+Finally, set `BDB_PREFIX` to this path according to your shell:
+
+```
+csh: setenv BDB_PREFIX [path displayed above]
+```
+
+```
+sh/bash: export BDB_PREFIX=[path displayed above]
+```
 
 #### GUI Dependencies
 ###### Qt5
 
-Bitcoin Core includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install `qt5`. Skip if you don't intend to use the GUI.
+Bitcoin Core includes a GUI built with the cross-platform Qt Framework. To compile the GUI, we need to install the necessary parts of Qt. Skip if you don't intend to use the GUI.
 ```bash
-pkg install qt5
+pkg install qt5-buildtools qt5-core qt5-gui qt5-linguisttools qt5-testlib qt5-widgets
 ```
+
 ###### libqrencode
 
 The GUI can encode addresses in a QR Code. To build in QR support for the GUI, install `libqrencode`. Skip if not using the GUI or don't want QR code functionality.
@@ -91,12 +109,12 @@ This explicitly enables the GUI and disables legacy wallet support, assuming `sq
 
 ##### Descriptor & Legacy Wallet. No GUI:
 This enables support for both wallet types and disables the GUI, assuming
-`sqlite3` and `db5` are both installed.
+`sqlite3` and `db4` are both installed.
 ```bash
 ./autogen.sh
-./configure --with-gui=no --with-incompatible-bdb \
-    BDB_LIBS="-ldb_cxx-5" \
-    BDB_CFLAGS="-I/usr/local/include/db5" \
+./configure --with-gui=no \
+    BDB_LIBS="-L${BDB_PREFIX}/lib -ldb_cxx-4.8" \
+    BDB_CFLAGS="-I${BDB_PREFIX}/include" \
     MAKE=gmake
 ```
 

@@ -2,9 +2,7 @@
 // Distributed under the MIT software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 
-#if defined(HAVE_CONFIG_H)
-#include <config/bitcoin-config.h>
-#endif
+#include <config/bitcoin-config.h> // IWYU pragma: keep
 
 #include <qt/optionsmodel.h>
 
@@ -12,13 +10,15 @@
 #include <qt/guiconstants.h>
 #include <qt/guiutil.h>
 
+#include <common/args.h>
 #include <interfaces/node.h>
 #include <mapport.h>
 #include <net.h>
 #include <netbase.h>
-#include <txdb.h>       // for -dbcache defaults
+#include <node/chainstatemanager_args.h>
+#include <txdb.h> // for -dbcache defaults
 #include <util/string.h>
-#include <validation.h> // For DEFAULT_SCRIPTCHECK_THREADS
+#include <validation.h>    // For DEFAULT_SCRIPTCHECK_THREADS
 #include <wallet/wallet.h> // For DEFAULT_SPEND_ZEROCONF_CHANGE
 
 #include <QDebug>
@@ -59,7 +59,7 @@ static const char* SettingName(OptionsModel::OptionID option)
 }
 
 /** Call node.updateRwSetting() with Bitcoin 22.x workaround. */
-static void UpdateRwSetting(interfaces::Node& node, OptionsModel::OptionID option, const util::SettingsValue& value)
+static void UpdateRwSetting(interfaces::Node& node, OptionsModel::OptionID option, const std::string& suffix, const common::SettingsValue& value)
 {
     if (value.isNum() &&
         (option == OptionsModel::DatabaseCache ||
@@ -73,21 +73,21 @@ static void UpdateRwSetting(interfaces::Node& node, OptionsModel::OptionID optio
         // in later releases by https://github.com/bitcoin/bitcoin/pull/24498.
         // If new numeric settings are added, they can be written as numbers
         // instead of strings, because bitcoin 22.x will not try to read these.
-        node.updateRwSetting(SettingName(option), value.getValStr());
+        node.updateRwSetting(SettingName(option) + suffix, value.getValStr());
     } else {
-        node.updateRwSetting(SettingName(option), value);
+        node.updateRwSetting(SettingName(option) + suffix, value);
     }
 }
 
 //! Convert enabled/size values to bitcoin -prune setting.
-static util::SettingsValue PruneSetting(bool prune_enabled, int prune_size_gb)
+static common::SettingsValue PruneSetting(bool prune_enabled, int prune_size_gb)
 {
     assert(!prune_enabled || prune_size_gb >= 1); // PruneSizeGB and ParsePruneSizeGB never return less
     return prune_enabled ? PruneGBtoMiB(prune_size_gb) : 0;
 }
 
 //! Get pruning enabled value to show in GUI from bitcoin -prune setting.
-static bool PruneEnabled(const util::SettingsValue& prune_setting)
+static bool PruneEnabled(const common::SettingsValue& prune_setting)
 {
     // -prune=1 setting is manual pruning mode, so disabled for purposes of the gui
     return SettingToInt(prune_setting, 0) > 1;
@@ -95,7 +95,7 @@ static bool PruneEnabled(const util::SettingsValue& prune_setting)
 
 //! Get pruning size value to show in GUI from bitcoin -prune setting. If
 //! pruning is not enabled, just show default recommended pruning size (2GB).
-static int PruneSizeGB(const util::SettingsValue& prune_setting)
+static int PruneSizeGB(const common::SettingsValue& prune_setting)
 {
     int value = SettingToInt(prune_setting, 0);
     return value > 1 ? PruneMiBtoGB(value) : DEFAULT_PRUNE_TARGET_GB;
@@ -117,6 +117,37 @@ struct ProxySetting {
 static ProxySetting ParseProxyString(const std::string& proxy);
 static std::string ProxyString(bool is_set, QString ip, QString port);
 
+static const QLatin1String fontchoice_str_embedded{"embedded"};
+static const QLatin1String fontchoice_str_best_system{"best_system"};
+static const QString fontchoice_str_custom_prefix{QStringLiteral("custom, ")};
+
+QString OptionsModel::FontChoiceToString(const OptionsModel::FontChoice& f)
+{
+    if (std::holds_alternative<FontChoiceAbstract>(f)) {
+        if (f == UseBestSystemFont) {
+            return fontchoice_str_best_system;
+        } else {
+            return fontchoice_str_embedded;
+        }
+    }
+    return fontchoice_str_custom_prefix + std::get<QFont>(f).toString();
+}
+
+OptionsModel::FontChoice OptionsModel::FontChoiceFromString(const QString& s)
+{
+    if (s == fontchoice_str_best_system) {
+        return FontChoiceAbstract::BestSystemFont;
+    } else if (s == fontchoice_str_embedded) {
+        return FontChoiceAbstract::EmbeddedFont;
+    } else if (s.startsWith(fontchoice_str_custom_prefix)) {
+        QFont f;
+        f.fromString(s.mid(fontchoice_str_custom_prefix.size()));
+        return f;
+    } else {
+        return FontChoiceAbstract::EmbeddedFont;  // default
+    }
+}
+
 OptionsModel::OptionsModel(interfaces::Node& node, QObject *parent) :
     QAbstractListModel(parent), m_node{node}
 {
@@ -131,13 +162,6 @@ void OptionsModel::addOverriddenOption(const std::string &option)
 bool OptionsModel::Init(bilingual_str& error)
 {
     // Initialize display settings from stored settings.
-    m_prune_size_gb = PruneSizeGB(node().getPersistentSetting("prune"));
-    ProxySetting proxy = ParseProxyString(SettingToString(node().getPersistentSetting("proxy"), GetDefaultProxyAddress().toStdString()));
-    m_proxy_ip = proxy.ip;
-    m_proxy_port = proxy.port;
-    ProxySetting onion = ParseProxyString(SettingToString(node().getPersistentSetting("onion"), GetDefaultProxyAddress().toStdString()));
-    m_onion_ip = onion.ip;
-    m_onion_port = onion.port;
     language = QString::fromStdString(SettingToString(node().getPersistentSetting("lang"), ""));
 
     checkAndMigrate();
@@ -221,11 +245,18 @@ bool OptionsModel::Init(bilingual_str& error)
 #endif
 
     // Display
-    if (!settings.contains("UseEmbeddedMonospacedFont")) {
-        settings.setValue("UseEmbeddedMonospacedFont", "true");
+    if (settings.contains("FontForMoney")) {
+        m_font_money = FontChoiceFromString(settings.value("FontForMoney").toString());
+    } else if (settings.contains("UseEmbeddedMonospacedFont")) {
+        if (settings.value("UseEmbeddedMonospacedFont").toBool()) {
+            m_font_money = FontChoiceAbstract::EmbeddedFont;
+        } else {
+            m_font_money = FontChoiceAbstract::BestSystemFont;
+        }
     }
-    m_use_embedded_monospaced_font = settings.value("UseEmbeddedMonospacedFont").toBool();
-    Q_EMIT useEmbeddedMonospacedFontChanged(m_use_embedded_monospaced_font);
+    Q_EMIT fontForMoneyChanged(getFontForMoney());
+
+    m_mask_values = settings.value("mask_values", false).toBool();
 
     return true;
 }
@@ -315,10 +346,8 @@ static QString GetDefaultProxyAddress()
 
 void OptionsModel::SetPruneTargetGB(int prune_target_gb)
 {
-    const util::SettingsValue cur_value = node().getPersistentSetting("prune");
-    const util::SettingsValue new_value = PruneSetting(prune_target_gb > 0, prune_target_gb);
-
-    m_prune_size_gb = prune_target_gb;
+    const common::SettingsValue cur_value = node().getPersistentSetting("prune");
+    const common::SettingsValue new_value = PruneSetting(prune_target_gb > 0, prune_target_gb);
 
     // Force setting to take effect. It is still safe to change the value at
     // this point because this function is only called after the intro screen is
@@ -332,7 +361,12 @@ void OptionsModel::SetPruneTargetGB(int prune_target_gb)
         PruneSizeGB(cur_value) != PruneSizeGB(new_value)) {
         // Call UpdateRwSetting() instead of setOption() to avoid setting
         // RestartRequired flag
-        UpdateRwSetting(node(), Prune, new_value);
+        UpdateRwSetting(node(), Prune, "", new_value);
+    }
+
+    // Keep previous pruning size, if pruning was disabled.
+    if (PruneEnabled(cur_value)) {
+        UpdateRwSetting(node(), Prune, "-prev", PruneEnabled(new_value) ? common::SettingsValue{} : cur_value);
     }
 }
 
@@ -360,9 +394,10 @@ bool OptionsModel::setData(const QModelIndex & index, const QVariant & value, in
     return successful;
 }
 
-QVariant OptionsModel::getOption(OptionID option) const
+// NOLINTNEXTLINE(misc-no-recursion)
+QVariant OptionsModel::getOption(OptionID option, const std::string& suffix) const
 {
-    auto setting = [&]{ return node().getPersistentSetting(SettingName(option)); };
+    auto setting = [&]{ return node().getPersistentSetting(SettingName(option) + suffix); };
 
     QSettings settings;
     switch (option) {
@@ -389,19 +424,30 @@ QVariant OptionsModel::getOption(OptionID option) const
 
     // default proxy
     case ProxyUse:
-        return ParseProxyString(SettingToString(setting(), "")).is_set;
-    case ProxyIP:
-        return m_proxy_ip;
-    case ProxyPort:
-        return m_proxy_port;
-
-    // separate Tor proxy
     case ProxyUseTor:
         return ParseProxyString(SettingToString(setting(), "")).is_set;
-    case ProxyIPTor:
-        return m_onion_ip;
-    case ProxyPortTor:
-        return m_onion_port;
+    case ProxyIP:
+    case ProxyIPTor: {
+        ProxySetting proxy = ParseProxyString(SettingToString(setting(), ""));
+        if (proxy.is_set) {
+            return proxy.ip;
+        } else if (suffix.empty()) {
+            return getOption(option, "-prev");
+        } else {
+            return ParseProxyString(GetDefaultProxyAddress().toStdString()).ip;
+        }
+    }
+    case ProxyPort:
+    case ProxyPortTor: {
+        ProxySetting proxy = ParseProxyString(SettingToString(setting(), ""));
+        if (proxy.is_set) {
+            return proxy.port;
+        } else if (suffix.empty()) {
+            return getOption(option, "-prev");
+        } else {
+            return ParseProxyString(GetDefaultProxyAddress().toStdString()).port;
+        }
+    }
 
 #ifdef ENABLE_WALLET
     case SpendZeroConfChange:
@@ -417,8 +463,8 @@ QVariant OptionsModel::getOption(OptionID option) const
         return strThirdPartyTxUrls;
     case Language:
         return QString::fromStdString(SettingToString(setting(), ""));
-    case UseEmbeddedMonospacedFont:
-        return m_use_embedded_monospaced_font;
+    case FontForMoney:
+        return QVariant::fromValue(m_font_money);
     case CoinControlFeatures:
         return fCoinControlFeatures;
     case EnablePSBTControls:
@@ -426,7 +472,9 @@ QVariant OptionsModel::getOption(OptionID option) const
     case Prune:
         return PruneEnabled(setting());
     case PruneSize:
-        return m_prune_size_gb;
+        return PruneEnabled(setting()) ? PruneSizeGB(setting()) :
+               suffix.empty()          ? getOption(option, "-prev") :
+                                         DEFAULT_PRUNE_TARGET_GB;
     case DatabaseCache:
         return qlonglong(SettingToInt(setting(), nDefaultDbCache));
     case ThreadsScriptVerif:
@@ -435,15 +483,35 @@ QVariant OptionsModel::getOption(OptionID option) const
         return SettingToBool(setting(), DEFAULT_LISTEN);
     case Server:
         return SettingToBool(setting(), false);
+    case MaskValues:
+        return m_mask_values;
     default:
         return QVariant();
     }
 }
 
-bool OptionsModel::setOption(OptionID option, const QVariant& value)
+QFont OptionsModel::getFontForChoice(const FontChoice& fc)
 {
-    auto changed = [&] { return value.isValid() && value != getOption(option); };
-    auto update = [&](const util::SettingsValue& value) { return UpdateRwSetting(node(), option, value); };
+    QFont f;
+    if (std::holds_alternative<FontChoiceAbstract>(fc)) {
+        f = GUIUtil::fixedPitchFont(fc != UseBestSystemFont);
+        f.setWeight(QFont::Bold);
+    } else {
+        f = std::get<QFont>(fc);
+    }
+    return f;
+}
+
+QFont OptionsModel::getFontForMoney() const
+{
+    return getFontForChoice(m_font_money);
+}
+
+// NOLINTNEXTLINE(misc-no-recursion)
+bool OptionsModel::setOption(OptionID option, const QVariant& value, const std::string& suffix)
+{
+    auto changed = [&] { return value.isValid() && value != getOption(option, suffix); };
+    auto update = [&](const common::SettingsValue& value) { return UpdateRwSetting(node(), option, suffix, value); };
 
     bool successful = true; /* set to false on parse error */
     QSettings settings;
@@ -481,52 +549,60 @@ bool OptionsModel::setOption(OptionID option, const QVariant& value)
     // default proxy
     case ProxyUse:
         if (changed()) {
-            update(ProxyString(value.toBool(), m_proxy_ip, m_proxy_port));
-            setRestartRequired(true);
+            if (suffix.empty() && !value.toBool()) setOption(option, true, "-prev");
+            update(ProxyString(value.toBool(), getOption(ProxyIP).toString(), getOption(ProxyPort).toString()));
+            if (suffix.empty() && value.toBool()) UpdateRwSetting(node(), option, "-prev", {});
+            if (suffix.empty()) setRestartRequired(true);
         }
         break;
     case ProxyIP:
         if (changed()) {
-            m_proxy_ip = value.toString();
-            if (getOption(ProxyUse).toBool()) {
-                update(ProxyString(true, m_proxy_ip, m_proxy_port));
-                setRestartRequired(true);
+            if (suffix.empty() && !getOption(ProxyUse).toBool()) {
+                setOption(option, value, "-prev");
+            } else {
+                update(ProxyString(true, value.toString(), getOption(ProxyPort).toString()));
             }
+            if (suffix.empty() && getOption(ProxyUse).toBool()) setRestartRequired(true);
         }
         break;
     case ProxyPort:
         if (changed()) {
-            m_proxy_port = value.toString();
-            if (getOption(ProxyUse).toBool()) {
-                update(ProxyString(true, m_proxy_ip, m_proxy_port));
-                setRestartRequired(true);
+            if (suffix.empty() && !getOption(ProxyUse).toBool()) {
+                setOption(option, value, "-prev");
+            } else {
+                update(ProxyString(true, getOption(ProxyIP).toString(), value.toString()));
             }
+            if (suffix.empty() && getOption(ProxyUse).toBool()) setRestartRequired(true);
         }
         break;
 
     // separate Tor proxy
     case ProxyUseTor:
         if (changed()) {
-            update(ProxyString(value.toBool(), m_onion_ip, m_onion_port));
-            setRestartRequired(true);
+            if (suffix.empty() && !value.toBool()) setOption(option, true, "-prev");
+            update(ProxyString(value.toBool(), getOption(ProxyIPTor).toString(), getOption(ProxyPortTor).toString()));
+            if (suffix.empty() && value.toBool()) UpdateRwSetting(node(), option, "-prev", {});
+            if (suffix.empty()) setRestartRequired(true);
         }
         break;
     case ProxyIPTor:
         if (changed()) {
-            m_onion_ip = value.toString();
-            if (getOption(ProxyUseTor).toBool()) {
-                update(ProxyString(true, m_onion_ip, m_onion_port));
-                setRestartRequired(true);
+            if (suffix.empty() && !getOption(ProxyUseTor).toBool()) {
+                setOption(option, value, "-prev");
+            } else {
+                update(ProxyString(true, value.toString(), getOption(ProxyPortTor).toString()));
             }
+            if (suffix.empty() && getOption(ProxyUseTor).toBool()) setRestartRequired(true);
         }
         break;
     case ProxyPortTor:
         if (changed()) {
-            m_onion_port = value.toString();
-            if (getOption(ProxyUseTor).toBool()) {
-                update(ProxyString(true, m_onion_ip, m_onion_port));
-                setRestartRequired(true);
+            if (suffix.empty() && !getOption(ProxyUseTor).toBool()) {
+                setOption(option, value, "-prev");
+            } else {
+                update(ProxyString(true, getOption(ProxyIPTor).toString(), value.toString()));
             }
+            if (suffix.empty() && getOption(ProxyUseTor).toBool()) setRestartRequired(true);
         }
         break;
 
@@ -564,11 +640,15 @@ bool OptionsModel::setOption(OptionID option, const QVariant& value)
             setRestartRequired(true);
         }
         break;
-    case UseEmbeddedMonospacedFont:
-        m_use_embedded_monospaced_font = value.toBool();
-        settings.setValue("UseEmbeddedMonospacedFont", m_use_embedded_monospaced_font);
-        Q_EMIT useEmbeddedMonospacedFontChanged(m_use_embedded_monospaced_font);
+    case FontForMoney:
+    {
+        const auto& new_font = value.value<FontChoice>();
+        if (m_font_money == new_font) break;
+        settings.setValue("FontForMoney", FontChoiceToString(new_font));
+        m_font_money = new_font;
+        Q_EMIT fontForMoneyChanged(getFontForMoney());
         break;
+    }
     case CoinControlFeatures:
         fCoinControlFeatures = value.toBool();
         settings.setValue("fCoinControlFeatures", fCoinControlFeatures);
@@ -580,17 +660,20 @@ bool OptionsModel::setOption(OptionID option, const QVariant& value)
         break;
     case Prune:
         if (changed()) {
-            update(PruneSetting(value.toBool(), m_prune_size_gb));
-            setRestartRequired(true);
+            if (suffix.empty() && !value.toBool()) setOption(option, true, "-prev");
+            update(PruneSetting(value.toBool(), getOption(PruneSize).toInt()));
+            if (suffix.empty() && value.toBool()) UpdateRwSetting(node(), option, "-prev", {});
+            if (suffix.empty()) setRestartRequired(true);
         }
         break;
     case PruneSize:
         if (changed()) {
-            m_prune_size_gb = ParsePruneSizeGB(value);
-            if (getOption(Prune).toBool()) {
-                update(PruneSetting(true, m_prune_size_gb));
-                setRestartRequired(true);
+            if (suffix.empty() && !getOption(Prune).toBool()) {
+                setOption(option, value, "-prev");
+            } else {
+                update(PruneSetting(true, ParsePruneSizeGB(value)));
             }
+            if (suffix.empty() && getOption(Prune).toBool()) setRestartRequired(true);
         }
         break;
     case DatabaseCache:
@@ -611,6 +694,10 @@ bool OptionsModel::setOption(OptionID option, const QVariant& value)
             update(value.toBool());
             setRestartRequired(true);
         }
+        break;
+    case MaskValues:
+        m_mask_values = value.toBool();
+        settings.setValue("mask_values", m_mask_values);
         break;
     default:
         break;
@@ -638,6 +725,11 @@ bool OptionsModel::isRestartRequired() const
 {
     QSettings settings;
     return settings.value("fRestartRequired", false).toBool();
+}
+
+bool OptionsModel::hasSigner()
+{
+    return gArgs.GetArg("-signer", "") != "";
 }
 
 void OptionsModel::checkAndMigrate()

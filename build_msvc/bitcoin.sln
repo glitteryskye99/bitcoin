@@ -2,7 +2,7 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 16
 VisualStudioVersion = 16.0.28803.452
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libbitcoinconsensus", "libbitcoinconsensus\libbitcoinconsensus.vcxproj", "{2B384FA8-9EE1-4544-93CB-0D733C25E8CE}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libbitcoin_consensus", "libbitcoin_consensus\libbitcoin_consensus.vcxproj", "{2B384FA8-9EE1-4544-93CB-0D733C25E8CE}"
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "bitcoind", "bitcoind\bitcoind.vcxproj", "{D4513DDF-6013-44DC-ADCC-12EAF6D1F038}"
 EndProject
@@ -48,7 +48,9 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libtest_util", "libtest_uti
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "test_bitcoin-qt", "test_bitcoin-qt\test_bitcoin-qt.vcxproj", "{51201D5E-D939-4854-AE9D-008F03FF518E}"
 EndProject
-Project("{542007E3-BE0D-4B0D-A6B0-AA8813E2558D}") = "libminisketch", "libminisketch\libminisketch.vcxproj", "{542007E3-BE0D-4B0D-A6B0-AA8813E2558D}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "libminisketch", "libminisketch\libminisketch.vcxproj", "{542007E3-BE0D-4B0D-A6B0-AA8813E2558D}"
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "fuzz", "fuzz\fuzz.vcxproj", "{AFCEE6C1-89FB-49AB-A694-BA580A59E2D8}"
 EndProject
 Global
     GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -152,6 +154,10 @@ Global
         {542007E3-BE0D-4B0D-A6B0-AA8813E2558D}.Debug|x64.Build.0 = Debug|x64
         {542007E3-BE0D-4B0D-A6B0-AA8813E2558D}.Release|x64.ActiveCfg = Release|x64
         {542007E3-BE0D-4B0D-A6B0-AA8813E2558D}.Release|x64.Build.0 = Release|x64
+        {AFCEE6C1-89FB-49AB-A694-BA580A59E2D8}.Debug|x64.ActiveCfg = Debug|x64
+        {AFCEE6C1-89FB-49AB-A694-BA580A59E2D8}.Debug|x64.Build.0 = Debug|x64
+        {AFCEE6C1-89FB-49AB-A694-BA580A59E2D8}.Release|x64.ActiveCfg = Release|x64
+        {AFCEE6C1-89FB-49AB-A694-BA580A59E2D8}.Release|x64.Build.0 = Release|x64
     EndGlobalSection
     GlobalSection(SolutionProperties) = preSolution
         HideSolutionNode = FALSE

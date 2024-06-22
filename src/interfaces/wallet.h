@@ -5,13 +5,14 @@
 #ifndef BITCOIN_INTERFACES_WALLET_H
 #define BITCOIN_INTERFACES_WALLET_H
 
+#include <addresstype.h>
+#include <common/signmessage.h>
 #include <consensus/amount.h>
-#include <fs.h>
-#include <interfaces/chain.h>          // For ChainClient
-#include <pubkey.h>                    // For CKeyID and CScriptID (definitions needed in CTxDestination instantiation)
-#include <script/standard.h>           // For CTxDestination
-#include <support/allocators/secure.h> // For SecureString
-#include <util/message.h>
+#include <interfaces/chain.h>
+#include <pubkey.h>
+#include <script/script.h>
+#include <support/allocators/secure.h>
+#include <util/fs.h>
 #include <util/result.h>
 #include <util/ui_change_type.h>
 
@@ -29,12 +30,18 @@ class CFeeRate;
 class CKey;
 enum class FeeReason;
 enum class OutputType;
-enum class TransactionError;
 struct PartiallySignedTransaction;
 struct bilingual_str;
+namespace common {
+enum class PSBTError;
+} // namespace common
+namespace node {
+enum class TransactionError;
+} // namespace node
 namespace wallet {
 class CCoinControl;
 class CWallet;
+enum class AddressPurpose;
 enum isminetype : unsigned int;
 struct CRecipient;
 struct WalletContext;
@@ -49,6 +56,7 @@ struct WalletBalances;
 struct WalletTx;
 struct WalletTxOut;
 struct WalletTxStatus;
+struct WalletMigrationResult;
 
 using WalletOrderForm = std::vector<std::pair<std::string, std::string>>;
 using WalletValueMap = std::map<std::string, std::string>;
@@ -103,7 +111,7 @@ public:
     virtual bool haveWatchOnly() = 0;
 
     //! Add or update address.
-    virtual bool setAddressBook(const CTxDestination& dest, const std::string& name, const std::string& purpose) = 0;
+    virtual bool setAddressBook(const CTxDestination& dest, const std::string& name, const std::optional<wallet::AddressPurpose>& purpose) = 0;
 
     // Remove address.
     virtual bool delAddressBook(const CTxDestination& dest) = 0;
@@ -112,10 +120,10 @@ public:
     virtual bool getAddress(const CTxDestination& dest,
         std::string* name,
         wallet::isminetype* is_mine,
-        std::string* purpose) = 0;
+        wallet::AddressPurpose* purpose) = 0;
 
     //! Get wallet address list.
-    virtual std::vector<WalletAddress> getAddresses() const = 0;
+    virtual std::vector<WalletAddress> getAddresses() = 0;
 
     //! Get receive requests.
     virtual std::vector<std::string> getAddressReceiveRequests() = 0;
@@ -124,7 +132,7 @@ public:
     virtual bool setAddressReceiveRequest(const CTxDestination& dest, const std::string& id, const std::string& value) = 0;
 
     //! Display address on external signer
-    virtual bool displayAddress(const CTxDestination& dest) = 0;
+    virtual util::Result<void> displayAddress(const CTxDestination& dest) = 0;
 
     //! Lock coin.
     virtual bool lockCoin(const COutPoint& output, const bool write_to_db) = 0;
@@ -199,7 +207,7 @@ public:
         int& num_blocks) = 0;
 
     //! Fill PSBT.
-    virtual TransactionError fillPSBT(int sighash_type,
+    virtual std::optional<common::PSBTError> fillPSBT(int sighash_type,
         bool sign,
         bool bip32derivs,
         size_t* n_signed,
@@ -293,7 +301,7 @@ public:
     using AddressBookChangedFn = std::function<void(const CTxDestination& address,
         const std::string& label,
         bool is_mine,
-        const std::string& purpose,
+        wallet::AddressPurpose purpose,
         ChangeType status)>;
     virtual std::unique_ptr<Handler> handleAddressBookChanged(AddressBookChangedFn fn) = 0;
 
@@ -331,6 +339,9 @@ public:
     //! Restore backup wallet
     virtual util::Result<std::unique_ptr<Wallet>> restoreWallet(const fs::path& backup_file, const std::string& wallet_name, std::vector<bilingual_str>& warnings) = 0;
 
+    //! Migrate a wallet
+    virtual util::Result<WalletMigrationResult> migrateWallet(const std::string& name, const SecureString& passphrase) = 0;
+
     //! Return available wallets in wallet directory.
     virtual std::vector<std::string> listWalletDir() = 0;
 
@@ -352,11 +363,11 @@ struct WalletAddress
 {
     CTxDestination dest;
     wallet::isminetype is_mine;
+    wallet::AddressPurpose purpose;
     std::string name;
-    std::string purpose;
 
-    WalletAddress(CTxDestination dest, wallet::isminetype is_mine, std::string name, std::string purpose)
-        : dest(std::move(dest)), is_mine(is_mine), name(std::move(name)), purpose(std::move(purpose))
+    WalletAddress(CTxDestination dest, wallet::isminetype is_mine, wallet::AddressPurpose purpose, std::string name)
+        : dest(std::move(dest)), is_mine(is_mine), purpose(std::move(purpose)), name(std::move(name))
     {
     }
 };
@@ -387,6 +398,7 @@ struct WalletTx
     CTransactionRef tx;
     std::vector<wallet::isminetype> txin_is_mine;
     std::vector<wallet::isminetype> txout_is_mine;
+    std::vector<bool> txout_is_change;
     std::vector<CTxDestination> txout_address;
     std::vector<wallet::isminetype> txout_address_is_mine;
     CAmount credit;
@@ -420,6 +432,15 @@ struct WalletTxOut
     int64_t time;
     int depth_in_main_chain = -1;
     bool is_spent = false;
+};
+
+//! Migrated wallet info
+struct WalletMigrationResult
+{
+    std::unique_ptr<Wallet> wallet;
+    std::optional<std::string> watchonly_wallet_name;
+    std::optional<std::string> solvables_wallet_name;
+    fs::path backup_path;
 };
 
 //! Return implementation of Wallet interface. This function is defined in
